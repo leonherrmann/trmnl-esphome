@@ -52,11 +52,11 @@ ota:
   - platform: esphome
 
 wifi:
-  ssid: "REDACTED_SSID"
-  password: "REDACTED_PASSWORD"
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
   ap:
     ssid: "${device_name}-fallback"
-    password: "trmnlsetup"
+    password: !secret ap_password
 
 captive_portal:
 
@@ -303,7 +303,6 @@ binary_sensor:
     name: "TRMNL Button"
     pin:
       number: GPIO2
-      allow_other_uses: true
       mode:
         input: true
         pullup: true
@@ -403,7 +402,6 @@ script:
 #   sleep_duration: 15min
 #   wakeup_pin:
 #     number: GPIO2
-#     allow_other_uses: true
 #     inverted: true
 #     mode:
 #       input: true

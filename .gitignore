@@ -11,3 +11,7 @@
 sdkconfig.*
 !sdkconfig.defaults
 managed_components/
+
+# ESPHome local config (never commit secrets or build artefacts)
+esphome/secrets.yaml
+esphome/.esphome/
