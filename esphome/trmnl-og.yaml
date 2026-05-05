@@ -20,12 +20,15 @@ logger:
   level: DEBUG
 
 api:
-  encryption:
-    key: "REPLACE_WITH_32_BYTE_BASE64_KEY"
+  # To enable encryption, generate a key with `openssl rand -base64 32`
+  # and uncomment:
+  # encryption:
+  #   key: "PASTE_BASE64_KEY_HERE"
 
 ota:
   - platform: esphome
-    password: "REPLACE_WITH_OTA_PASSWORD"
+    # Optional but recommended once the device is working:
+    # password: "PICK_A_PASSWORD"
 
 wifi:
   ssid: "REDACTED_SSID"
