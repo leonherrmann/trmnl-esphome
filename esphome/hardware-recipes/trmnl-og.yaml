@@ -1,0 +1,91 @@
+# ============================================================================
+# TARGET DEVICE: TRMNL OG
+# Name: TRMNL OG
+# Resolution: 800x480
+# Shape: rect
+# Orientation: landscape
+# Inverted: false
+# Dark Mode: disabled
+# Refresh Interval: 900
+# ============================================================================
+#
+# Retail TRMNL OG sold at usetrmnl.com.
+# ESP32-C3 + Waveshare 7.5" V2 B/W e-paper.
+# Pin assignments mirror BOARD_TRMNL in the stock firmware
+# (src/DEV_Config.h:62-70 of leonherrmann/trmnl-esphome).
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: arduino
+
+spi:
+  id: epaper_spi
+  clk_pin: GPIO7      # EPD SCK
+  mosi_pin: GPIO8     # EPD MOSI
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_md
+    size: 24
+  - file: "gfonts://Roboto"
+    id: font_lg
+    size: 56
+
+display:
+  - platform: waveshare_epaper
+    id: epaper
+    spi_id: epaper_spi
+    model: 7.50inv2
+    cs_pin: GPIO6     # EPD CS
+    dc_pin: GPIO5     # EPD DC
+    busy_pin: GPIO4   # EPD BUSY
+    reset_pin: GPIO10 # EPD RST
+    rotation: 0
+    update_interval: never
+    lambda: |-
+      # __LAMBDA_PLACEHOLDER__
+
+binary_sensor:
+  - platform: gpio
+    id: trmnl_button
+    name: "TRMNL Button"
+    pin:
+      number: GPIO2
+      allow_other_uses: true
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    on_press:
+      - component.update: epaper
+
+i2c:
+  id: sensor_bus
+  sda: GPIO21
+  scl: GPIO20
+  scan: true
+  frequency: 100kHz
+
+sensor:
+  - platform: sht4x
+    i2c_id: sensor_bus
+    address: 0x44
+    update_interval: 60s
+    temperature:
+      name: "TRMNL Temperature"
+    humidity:
+      name: "TRMNL Humidity"
+
+deep_sleep:
+  id: ds
+  run_duration: 60s
+  sleep_duration: 15min
+  wakeup_pin:
+    number: GPIO2
+    allow_other_uses: true
+    inverted: true
+    mode:
+      input: true
+      pullup: true
+  wakeup_pin_mode: INVERT_WAKEUP
