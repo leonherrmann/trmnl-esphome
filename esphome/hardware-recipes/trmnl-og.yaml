@@ -13,6 +13,15 @@
 # ESP32-C3 + Waveshare 7.5" V2 B/W e-paper.
 # Pin assignments mirror BOARD_TRMNL in the stock firmware
 # (src/DEV_Config.h:62-70 of leonherrmann/trmnl-esphome).
+#
+# The display id is `epaper_display` so it matches the id that the designer's
+# auto-generated `script:` block uses (`component.update: epaper_display`),
+# avoiding a manual rename after every paste.
+#
+# This recipe is intentionally always-on (no deep_sleep). The designer adds
+# its own polling-loop script to refresh the panel; deep_sleep would conflict
+# with that. If you want battery-grade sleep behavior, drop the script and
+# add a deep_sleep block manually after pasting.
 
 esp32:
   board: esp32-c3-devkitm-1
@@ -24,17 +33,9 @@ spi:
   clk_pin: GPIO7      # EPD SCK
   mosi_pin: GPIO8     # EPD MOSI
 
-font:
-  - file: "gfonts://Roboto"
-    id: font_md
-    size: 24
-  - file: "gfonts://Roboto"
-    id: font_lg
-    size: 56
-
 display:
   - platform: waveshare_epaper
-    id: epaper
+    id: epaper_display
     spi_id: epaper_spi
     model: 7.50inv2
     cs_pin: GPIO6     # EPD CS
@@ -52,13 +53,12 @@ binary_sensor:
     name: "TRMNL Button"
     pin:
       number: GPIO2
-      allow_other_uses: true
       mode:
         input: true
         pullup: true
       inverted: true
     on_press:
-      - component.update: epaper
+      - component.update: epaper_display
 
 i2c:
   id: sensor_bus
@@ -76,16 +76,3 @@ sensor:
       name: "TRMNL Temperature"
     humidity:
       name: "TRMNL Humidity"
-
-deep_sleep:
-  id: ds
-  run_duration: 60s
-  sleep_duration: 15min
-  wakeup_pin:
-    number: GPIO2
-    allow_other_uses: true
-    inverted: true
-    mode:
-      input: true
-      pullup: true
-  wakeup_pin_mode: INVERT_WAKEUP

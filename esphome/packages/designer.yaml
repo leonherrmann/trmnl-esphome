@@ -1,0 +1,307 @@
+# This file is owned by ESPHome Designer.
+# Overwrite it wholesale with a fresh "Export Full YAML" paste.
+#
+# The designer's auto-commented `# esp32:` block is harmless (it lives in
+# packages/system.yaml). The `# deep_sleep:` block at the bottom of a paste
+# is also fine to leave commented — the always-on render loop below replaces
+# it. WiFi/api/ota/logger come from system.yaml and are stripped from the
+# designer's exports already.
+
+time:
+  - platform: homeassistant
+    id: ha_time
+
+globals:
+  - id: display_page
+    type: int
+    restore_value: true
+    initial_value: '0'
+  - id: page_refresh_default_s
+    type: int
+    restore_value: true
+    initial_value: '600'
+  - id: page_refresh_current_s
+    type: int
+    restore_value: false
+    initial_value: '60'
+  - id: initial_sensor_sync_pending
+    type: bool
+    restore_value: false
+    initial_value: 'true'
+
+spi:
+  id: epaper_spi
+  clk_pin: GPIO7
+  mosi_pin: GPIO8
+
+i2c:
+  id: sensor_bus
+  sda: GPIO21
+  scl: GPIO20
+  scan: true
+  frequency: 100kHz
+
+font:
+  - file:
+      type: gfonts
+      family: "Roboto"
+      weight: 400
+      italic: false
+    id: font_roboto_400_14
+    size: 14
+    glyphsets: [GF_Latin_Kernel]
+    ignore_missing_glyphs: true
+  - file:
+      type: gfonts
+      family: "Roboto"
+      weight: 400
+      italic: false
+    id: font_roboto_400_16
+    size: 16
+    glyphsets: [GF_Latin_Kernel]
+    ignore_missing_glyphs: true
+  - file:
+      type: gfonts
+      family: "Roboto"
+      weight: 400
+      italic: false
+    id: font_roboto_400_18
+    size: 18
+    glyphsets: [GF_Latin_Kernel]
+    ignore_missing_glyphs: true
+  - file: "fonts/materialdesignicons-webfont.ttf"
+    id: font_material_design_icons_400_22
+    size: 22
+    glyphs: ["\U000F0D43"]
+  - file: "fonts/materialdesignicons-webfont.ttf"
+    id: font_material_design_icons_400_32
+    size: 32
+    glyphs: ["\U000F050F", "\U000F058C", "\U000F058E", "\U000F0E4C", "\U000F0E7A", "\U000F10C2"]
+  - file: "fonts/materialdesignicons-webfont.ttf"
+    id: font_material_design_icons_400_48
+    size: 48
+    glyphs: ["\U000F1239"]
+
+display:
+  - platform: waveshare_epaper
+    id: epaper_display
+    spi_id: epaper_spi
+    model: 7.50inv2
+    cs_pin: GPIO6
+    dc_pin: GPIO5
+    busy_pin: GPIO4
+    reset_pin: GPIO10
+    rotation: 0
+    update_interval: never
+    lambda: |-
+      const auto COLOR_WHITE = Color(255, 255, 255);
+      const auto COLOR_BLACK = Color(0, 0, 0);
+      const auto COLOR_RED = Color(255, 0, 0);
+      const auto COLOR_GREEN = Color(0, 255, 0);
+      const auto COLOR_BLUE = Color(0, 0, 255);
+      const auto COLOR_YELLOW = Color(255, 255, 0);
+      const auto COLOR_ORANGE = Color(255, 165, 0);
+      auto color_off = COLOR_WHITE;
+      auto color_on = COLOR_BLACK;
+
+      auto print_wrapped_text = [&](int x, int y, int max_w, int line_h, esphome::font::Font *font, Color color, TextAlign align, const char* text) {
+        if (!text || max_w <= 0) return;
+        int cx = x;
+        int cy = y;
+        std::string line;
+        std::string word;
+        const char* p = text;
+        while (*p) {
+          bool is_space = (*p == ' ' || *p == '\n' || *p == '\r' || *p == '\t');
+          if (is_space) {
+            if (!word.empty()) {
+              int ww, wh, wbl, wx;
+              font->measure(word.c_str(), &ww, &wx, &wbl, &wh);
+              int lw = 0, lx;
+              if (!line.empty()) { font->measure(line.c_str(), &lw, &lx, &wbl, &wh); int sw, sx, sbl, sh; font->measure(" ", &sw, &sx, &sbl, &sh); lw += sw; }
+              if (lw + ww > max_w && !line.empty()) {
+                it.print(cx, cy, font, color, align, line.c_str());
+                cy += line_h;
+                line = word;
+              } else {
+                if (!line.empty()) line += " ";
+                line += word;
+              }
+              word.clear();
+            }
+          } else {
+            word += *p;
+          }
+          p++;
+        }
+        if (!word.empty()) {
+          int ww, wh, wbl, wx;
+          font->measure(word.c_str(), &ww, &wx, &wbl, &wh);
+          int lw = 0, lx;
+          if (!line.empty()) { font->measure(line.c_str(), &lw, &lx, &wbl, &wh); int sw, sx, sbl, sh; font->measure(" ", &sw, &sx, &sbl, &sh); lw += sw; }
+          if (lw + ww > max_w && !line.empty()) {
+            it.print(cx, cy, font, color, align, line.c_str());
+            cy += line_h;
+            line = word;
+          } else {
+            if (!line.empty()) line += " ";
+            line += word;
+          }
+        }
+        if (!line.empty()) {
+          it.print(cx, cy, font, color, align, line.c_str());
+        }
+      };
+
+      auto draw_rrect_border = [&](int x, int y, int w, int h, int r, int t, Color c) {
+        it.filled_rectangle(x + r, y, w - 2 * r, t, c);
+        it.filled_rectangle(x + r, y + h - t, w - 2 * r, t, c);
+        it.filled_rectangle(x, y + r, t, h - 2 * r, c);
+        it.filled_rectangle(x + w - t, y + r, t, h - 2 * r, c);
+        for (int dx = 0; dx <= r; dx++) {
+          for (int dy = 0; dy <= r; dy++) {
+            int ds = dx*dx + dy*dy;
+            if (ds <= r*r && ds > (r-t)*(r-t)) {
+              it.draw_pixel_at(x + r - dx, y + r - dy, c);
+              it.draw_pixel_at(x + w - r + dx - 1, y + r - dy, c);
+              it.draw_pixel_at(x + r - dx, y + h - r + dy - 1, c);
+              it.draw_pixel_at(x + w - r + dx - 1, y + h - r + dy - 1, c);
+            }
+          }
+        }
+      };
+
+      int currentPage = id(display_page);
+      if (currentPage == 0) {
+        it.fill(COLOR_WHITE);
+        color_off = COLOR_WHITE;
+        color_on = COLOR_BLACK;
+
+        draw_rrect_border(20, 25, 360, 197, 10, 3, color_on);
+        draw_rrect_border(423, 25, 360, 197, 10, 3, color_on);
+        draw_rrect_border(20, 258, 360, 201, 10, 3, color_on);
+        draw_rrect_border(423, 269, 360, 201, 10, 3, color_on);
+
+        if (id(sensor_alpstuga_1_humidity).has_state()) {
+          if (id(sensor_alpstuga_1_humidity).state <= 30) {
+            it.printf(243 + 60 / 2, 40 + 5 + 16, id(font_material_design_icons_400_32), color_on, TextAlign::CENTER, "\U000F0E7A");
+          } else if (id(sensor_alpstuga_1_humidity).state <= 60) {
+            it.printf(243 + 60 / 2, 40 + 5 + 16, id(font_material_design_icons_400_32), color_on, TextAlign::CENTER, "\U000F058E");
+          } else {
+            it.printf(243 + 60 / 2, 40 + 5 + 16, id(font_material_design_icons_400_32), color_on, TextAlign::CENTER, "\U000F058C");
+          }
+          it.printf(243 + 60 / 2, 40 + 5 + 32 + 2, id(font_roboto_400_16), color_on, TextAlign::TOP_CENTER, "%.0f%%", id(sensor_alpstuga_1_humidity).state);
+        } else {
+          it.printf(243 + 60 / 2, 40 + 5 + 16, id(font_material_design_icons_400_32), color_on, TextAlign::CENTER, "\U000F058E");
+          it.printf(243 + 60 / 2, 40 + 5 + 32 + 2, id(font_roboto_400_16), color_on, TextAlign::TOP_CENTER, "--%%");
+        }
+
+        if (id(sensor_alpstuga_1_temperature).has_state()) {
+          if (id(sensor_alpstuga_1_temperature).state <= 10) {
+            it.printf(303 + 60 / 2, 40 + 5 + 16, id(font_material_design_icons_400_32), color_on, TextAlign::CENTER, "\U000F0E4C");
+          } else if (id(sensor_alpstuga_1_temperature).state <= 25) {
+            it.printf(303 + 60 / 2, 40 + 5 + 16, id(font_material_design_icons_400_32), color_on, TextAlign::CENTER, "\U000F050F");
+          } else {
+            it.printf(303 + 60 / 2, 40 + 5 + 16, id(font_material_design_icons_400_32), color_on, TextAlign::CENTER, "\U000F10C2");
+          }
+          it.printf(303 + 60 / 2, 40 + 5 + 32 + 2, id(font_roboto_400_16), color_on, TextAlign::TOP_CENTER, "%.1f°C", id(sensor_alpstuga_1_temperature).state);
+        } else {
+          it.printf(303 + 60 / 2, 40 + 5 + 16, id(font_material_design_icons_400_32), color_on, TextAlign::CENTER, "\U000F050F");
+          it.printf(303 + 60 / 2, 40 + 5 + 32 + 2, id(font_roboto_400_16), color_on, TextAlign::TOP_CENTER, "--°C");
+        }
+
+        it.printf(70, 70, id(font_material_design_icons_400_48), color_on, TextAlign::CENTER, "%s", "\U000F1239");
+
+        {
+          char wrap_buf[512];
+          snprintf(wrap_buf, sizeof(wrap_buf), "%s", id(sensor_alpstuga_1_air_quality_txt).state.c_str());
+          print_wrapped_text(213, 70, 63, 22, id(font_roboto_400_18), color_on, TextAlign::TOP_CENTER, wrap_buf);
+        }
+
+        it.printf(212, 58, id(font_material_design_icons_400_22), color_on, TextAlign::CENTER, "%s", "\U000F0D43");
+      }
+
+binary_sensor:
+  - platform: gpio
+    id: trmnl_button
+    name: "TRMNL Button"
+    pin:
+      number: GPIO2
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    on_press:
+      - logger.log: "Button pressed - refreshing display"
+      - component.update: epaper_display
+
+sensor:
+  - platform: sht4x
+    i2c_id: sensor_bus
+    address: 0x44
+    update_interval: 60s
+    temperature:
+      name: "TRMNL Temperature"
+    humidity:
+      name: "TRMNL Humidity"
+
+  - platform: homeassistant
+    id: sensor_alpstuga_1_temperature
+    entity_id: sensor.alpstuga_1_temperature
+    internal: true
+  - platform: homeassistant
+    id: sensor_alpstuga_1_humidity
+    entity_id: sensor.alpstuga_1_humidity
+    internal: true
+  - platform: homeassistant
+    id: sensor_alpstuga_1_air_quality
+    entity_id: sensor.alpstuga_1_air_quality
+    internal: true
+
+text_sensor:
+  - platform: homeassistant
+    id: sensor_alpstuga_1_air_quality_txt
+    entity_id: sensor.alpstuga_1_air_quality
+    internal: true
+
+script:
+  - id: manage_run_and_sleep
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(ha_time).now().is_valid();'
+          then:
+            - logger.log: "Waiting for HA sync..."
+            - wait_until:
+                condition:
+                  lambda: 'return id(ha_time).now().is_valid();'
+                timeout: 120s
+      - if:
+          condition:
+            lambda: 'return id(initial_sensor_sync_pending);'
+          then:
+            - logger.log: "Waiting 5s for initial sensor updates..."
+            - delay: 5s
+            - lambda: 'id(initial_sensor_sync_pending) = false;'
+      - lambda: |-
+          int interval = id(page_refresh_default_s);
+          bool is_sleep_time = false;
+          auto t = id(ha_time).now();
+          if (t.is_valid()) {
+             int hour = t.hour;
+             int start = 0;
+             int end = 5;
+             if (start < end) {
+                 if (hour >= start && hour < end) is_sleep_time = true;
+             } else if (start > end) {
+                 if (hour >= start || hour < end) is_sleep_time = true;
+             }
+          }
+          if (is_sleep_time) {
+              interval = 3600;
+          }
+          id(page_refresh_current_s) = interval;
+      - component.update: epaper_display
+      - delay: !lambda 'return id(page_refresh_current_s) * 1000;'
+      - script.execute: manage_run_and_sleep
