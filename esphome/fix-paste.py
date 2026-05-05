@@ -32,6 +32,10 @@ FIXES: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"api_is_connected\(\)\s*&&\s*"), ""),
     (re.compile(r"\bapi_is_connected\(\)"), "id(ha_time).now().is_valid()"),
     (re.compile(r"\bepaper(?!\w)"), "epaper_display"),
+    # `allow_other_uses: true` is only valid when a pin has multiple users.
+    # Always-on mode has no deep_sleep, so the button pin only has one user
+    # and ESPHome rejects the flag. Strip the whole line.
+    (re.compile(r"^[ \t]*allow_other_uses:\s*true\s*\n", re.M), ""),
 ]
 
 
