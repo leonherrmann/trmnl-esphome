@@ -3,7 +3,10 @@
 # Layout updates from ESPHome Designer:
 #   1. Designer -> "Export Full YAML"
 #   2. Save the export over esphome/packages/designer.yaml (replace whole file)
-#   3. esphome run esphome/trmnl-og.yaml
+#   3. python esphome/fix-paste.py -i esphome/packages/designer.yaml
+#      (one-shot helper that applies the known designer bug fixes —
+#       see the script's docstring for what it touches)
+#   4. esphome run esphome/trmnl-og.yaml
 #
 # Hardware/system bits live in packages/system.yaml and rarely need editing.
 # WiFi creds live in esphome/secrets.yaml (gitignored). See secrets.yaml.example.
@@ -11,11 +14,6 @@
 # Required local font: place materialdesignicons-webfont.ttf at fonts/ next to
 # this YAML. Download:
 # https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf
-#
-# Known designer bugs that may need a one-time find/replace after pasting
-# (depending on which designer version generated the export):
-#   * api_is_connected()  -> drop the call (HA time validity is sufficient)
-#   * "%.0f%" / "--%"     -> "%.0f%%" / "--%%"  (escape literal % in printf)
 
 substitutions:
   device_name: trmnl-og
