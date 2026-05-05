@@ -1,3 +1,26 @@
+# ============================================================================
+# TARGET DEVICE: TRMNL OG
+# Name: TRMNL OG
+# Resolution: 800x480
+# Shape: rect
+# Orientation: landscape
+# Inverted: false
+# Dark Mode: disabled
+# Refresh Interval: 900
+# ============================================================================
+# Retail TRMNL OG (usetrmnl.com). ESP32-C3 + Waveshare 7.5" V2 B/W e-paper.
+# Pin assignments mirror BOARD_TRMNL in the stock firmware
+# (src/DEV_Config.h:62-70 of leonherrmann/trmnl-esphome).
+#
+# This file integrates a layout exported from ESPHome Designer
+# (https://github.com/koosoli/ESPHomeDesigner) reading three Home Assistant
+# sensors: sensor.alpstuga_1_temperature, _humidity, _air_quality.
+#
+# FONT REQUIREMENT: download materialdesignicons-webfont.ttf from
+# https://github.com/Templarian/MaterialDesign-Webfont/raw/master/fonts/materialdesignicons-webfont.ttf
+# and place it at <config_dir>/fonts/materialdesignicons-webfont.ttf next to
+# this YAML before compiling.
+
 substitutions:
   device_name: trmnl-og
   friendly_name: TRMNL OG
@@ -8,8 +31,8 @@ esphome:
   on_boot:
     priority: -100
     then:
-      - logger.log: "Boot complete; refreshing display."
-      - component.update: epaper
+      - logger.log: "Boot complete; starting render loop."
+      - script.execute: manage_run_and_sleep
 
 esp32:
   board: esp32-c3-devkitm-1
@@ -27,8 +50,6 @@ api:
 
 ota:
   - platform: esphome
-    # Optional but recommended once the device is working:
-    # password: "PICK_A_PASSWORD"
 
 wifi:
   ssid: "REDACTED_SSID"
@@ -39,23 +60,93 @@ wifi:
 
 captive_portal:
 
-# Display SPI bus
-# Pins per TRMNL firmware src/DEV_Config.h (BOARD_TRMNL): SCK=7, MOSI=8.
+time:
+  - platform: homeassistant
+    id: ha_time
+
+globals:
+  - id: display_page
+    type: int
+    restore_value: true
+    initial_value: '0'
+  - id: page_refresh_default_s
+    type: int
+    restore_value: true
+    initial_value: '600'
+  - id: page_refresh_current_s
+    type: int
+    restore_value: false
+    initial_value: '60'
+  - id: initial_sensor_sync_pending
+    type: bool
+    restore_value: false
+    initial_value: 'true'
+
+# ----------------------------------------------------------------------------
+# Display SPI bus  (TRMNL firmware BOARD_TRMNL: SCK=7, MOSI=8)
+# ----------------------------------------------------------------------------
 spi:
   id: epaper_spi
   clk_pin: GPIO7
   mosi_pin: GPIO8
 
-font:
-  - file: "gfonts://Roboto"
-    id: font_md
-    size: 24
-  - file: "gfonts://Roboto"
-    id: font_lg
-    size: 56
+# ----------------------------------------------------------------------------
+# I2C for on-board SHT4x  (SDA=21, SCL=20 per TRMNL firmware)
+# ----------------------------------------------------------------------------
+i2c:
+  id: sensor_bus
+  sda: GPIO21
+  scl: GPIO20
+  scan: true
+  frequency: 100kHz
 
-# Waveshare 7.5" V2 (800x480 B/W).
-# Pins per TRMNL firmware: CS=6, DC=5, BUSY=4, RST=10.
+# ----------------------------------------------------------------------------
+# Fonts
+# ----------------------------------------------------------------------------
+font:
+  - file:
+      type: gfonts
+      family: "Roboto"
+      weight: 400
+      italic: false
+    id: font_roboto_400_14
+    size: 14
+    glyphsets: [GF_Latin_Kernel]
+    ignore_missing_glyphs: true
+  - file:
+      type: gfonts
+      family: "Roboto"
+      weight: 400
+      italic: false
+    id: font_roboto_400_16
+    size: 16
+    glyphsets: [GF_Latin_Kernel]
+    ignore_missing_glyphs: true
+  - file:
+      type: gfonts
+      family: "Roboto"
+      weight: 400
+      italic: false
+    id: font_roboto_400_18
+    size: 18
+    glyphsets: [GF_Latin_Kernel]
+    ignore_missing_glyphs: true
+  - file: "fonts/materialdesignicons-webfont.ttf"
+    id: font_material_design_icons_400_22
+    size: 22
+    glyphs: ["\U000F0D43"]
+  - file: "fonts/materialdesignicons-webfont.ttf"
+    id: font_material_design_icons_400_32
+    size: 32
+    glyphs: ["\U000F050F", "\U000F058C", "\U000F058E", "\U000F0E4C", "\U000F0E7A", "\U000F10C2"]
+  - file: "fonts/materialdesignicons-webfont.ttf"
+    id: font_material_design_icons_400_48
+    size: 48
+    glyphs: ["\U000F1239"]
+
+# ----------------------------------------------------------------------------
+# Display  (Waveshare 7.5" V2 800x480 B/W; CS=6, DC=5, BUSY=4, RST=10)
+# ----------------------------------------------------------------------------
 display:
   - platform: waveshare_epaper
     id: epaper
@@ -68,16 +159,144 @@ display:
     rotation: 0
     update_interval: never
     lambda: |-
-      it.fill(COLOR_OFF);
-      it.rectangle(0, 0, it.get_width(), it.get_height(), COLOR_ON);
-      it.rectangle(20, 20, it.get_width() - 40, it.get_height() - 40, COLOR_ON);
-      it.filled_circle(it.get_width() / 2, it.get_height() / 2, 80, COLOR_ON);
-      it.printf(40, 40, id(font_lg), COLOR_ON, "TRMNL OG");
-      it.printf(40, 110, id(font_md), COLOR_ON,
-                "ESPHome %s  -  %ix%i",
-                ESPHOME_VERSION, it.get_width(), it.get_height());
+      const auto COLOR_WHITE = Color(255, 255, 255);
+      const auto COLOR_BLACK = Color(0, 0, 0);
+      const auto COLOR_RED = Color(255, 0, 0);
+      const auto COLOR_GREEN = Color(0, 255, 0);
+      const auto COLOR_BLUE = Color(0, 0, 255);
+      const auto COLOR_YELLOW = Color(255, 255, 0);
+      const auto COLOR_ORANGE = Color(255, 165, 0);
+      auto color_off = COLOR_WHITE;
+      auto color_on = COLOR_BLACK;
 
-# Front button on GPIO2 (active LOW, RTC-capable so it can wake from deep sleep).
+      // Helper to print text with word-wrap at widget boundary
+      auto print_wrapped_text = [&](int x, int y, int max_w, int line_h, esphome::font::Font *font, Color color, TextAlign align, const char* text) {
+        if (!text || max_w <= 0) return;
+        int cx = x;
+        int cy = y;
+        std::string line;
+        std::string word;
+        const char* p = text;
+        while (*p) {
+          bool is_space = (*p == ' ' || *p == '\n' || *p == '\r' || *p == '\t');
+          if (is_space) {
+            if (!word.empty()) {
+              int ww, wh, wbl, wx;
+              font->measure(word.c_str(), &ww, &wx, &wbl, &wh);
+              int lw = 0, lx;
+              if (!line.empty()) { font->measure(line.c_str(), &lw, &lx, &wbl, &wh); int sw, sx, sbl, sh; font->measure(" ", &sw, &sx, &sbl, &sh); lw += sw; }
+              if (lw + ww > max_w && !line.empty()) {
+                it.print(cx, cy, font, color, align, line.c_str());
+                cy += line_h;
+                line = word;
+              } else {
+                if (!line.empty()) line += " ";
+                line += word;
+              }
+              word.clear();
+            }
+          } else {
+            word += *p;
+          }
+          p++;
+        }
+        if (!word.empty()) {
+          int ww, wh, wbl, wx;
+          font->measure(word.c_str(), &ww, &wx, &wbl, &wh);
+          int lw = 0, lx;
+          if (!line.empty()) { font->measure(line.c_str(), &lw, &lx, &wbl, &wh); int sw, sx, sbl, sh; font->measure(" ", &sw, &sx, &sbl, &sh); lw += sw; }
+          if (lw + ww > max_w && !line.empty()) {
+            it.print(cx, cy, font, color, align, line.c_str());
+            cy += line_h;
+            line = word;
+          } else {
+            if (!line.empty()) line += " ";
+            line += word;
+          }
+        }
+        if (!line.empty()) {
+          it.print(cx, cy, font, color, align, line.c_str());
+        }
+      };
+
+      auto draw_rrect_border = [&](int x, int y, int w, int h, int r, int t, Color c) {
+        it.filled_rectangle(x + r, y, w - 2 * r, t, c);
+        it.filled_rectangle(x + r, y + h - t, w - 2 * r, t, c);
+        it.filled_rectangle(x, y + r, t, h - 2 * r, c);
+        it.filled_rectangle(x + w - t, y + r, t, h - 2 * r, c);
+        for (int dx = 0; dx <= r; dx++) {
+          for (int dy = 0; dy <= r; dy++) {
+            int ds = dx*dx + dy*dy;
+            if (ds <= r*r && ds > (r-t)*(r-t)) {
+              it.draw_pixel_at(x + r - dx, y + r - dy, c);
+              it.draw_pixel_at(x + w - r + dx - 1, y + r - dy, c);
+              it.draw_pixel_at(x + r - dx, y + h - r + dy - 1, c);
+              it.draw_pixel_at(x + w - r + dx - 1, y + h - r + dy - 1, c);
+            }
+          }
+        }
+      };
+
+      int currentPage = id(display_page);
+      // ═══ PAGE: Page 1 ═══
+      if (currentPage == 0) {
+        it.fill(COLOR_WHITE);
+        color_off = COLOR_WHITE;
+        color_on = COLOR_BLACK;
+
+        // Four rounded panels
+        draw_rrect_border(20, 25, 360, 197, 10, 3, color_on);
+        draw_rrect_border(423, 25, 360, 197, 10, 3, color_on);
+        draw_rrect_border(20, 258, 360, 201, 10, 3, color_on);
+        draw_rrect_border(423, 269, 360, 201, 10, 3, color_on);
+
+        // Humidity widget @ (243,40) 60x60
+        if (id(sensor_alpstuga_1_humidity).has_state()) {
+          if (id(sensor_alpstuga_1_humidity).state <= 30) {
+            it.printf(243 + 60 / 2, 40 + 5 + 16, id(font_material_design_icons_400_32), color_on, TextAlign::CENTER, "\U000F0E7A");
+          } else if (id(sensor_alpstuga_1_humidity).state <= 60) {
+            it.printf(243 + 60 / 2, 40 + 5 + 16, id(font_material_design_icons_400_32), color_on, TextAlign::CENTER, "\U000F058E");
+          } else {
+            it.printf(243 + 60 / 2, 40 + 5 + 16, id(font_material_design_icons_400_32), color_on, TextAlign::CENTER, "\U000F058C");
+          }
+          it.printf(243 + 60 / 2, 40 + 5 + 32 + 2, id(font_roboto_400_16), color_on, TextAlign::TOP_CENTER, "%.0f%%", id(sensor_alpstuga_1_humidity).state);
+        } else {
+          it.printf(243 + 60 / 2, 40 + 5 + 16, id(font_material_design_icons_400_32), color_on, TextAlign::CENTER, "\U000F058E");
+          it.printf(243 + 60 / 2, 40 + 5 + 32 + 2, id(font_roboto_400_16), color_on, TextAlign::TOP_CENTER, "--%%");
+        }
+
+        // Temperature widget @ (303,40) 60x60
+        if (id(sensor_alpstuga_1_temperature).has_state()) {
+          if (id(sensor_alpstuga_1_temperature).state <= 10) {
+            it.printf(303 + 60 / 2, 40 + 5 + 16, id(font_material_design_icons_400_32), color_on, TextAlign::CENTER, "\U000F0E4C");
+          } else if (id(sensor_alpstuga_1_temperature).state <= 25) {
+            it.printf(303 + 60 / 2, 40 + 5 + 16, id(font_material_design_icons_400_32), color_on, TextAlign::CENTER, "\U000F050F");
+          } else {
+            it.printf(303 + 60 / 2, 40 + 5 + 16, id(font_material_design_icons_400_32), color_on, TextAlign::CENTER, "\U000F10C2");
+          }
+          it.printf(303 + 60 / 2, 40 + 5 + 32 + 2, id(font_roboto_400_16), color_on, TextAlign::TOP_CENTER, "%.1f°C", id(sensor_alpstuga_1_temperature).state);
+        } else {
+          it.printf(303 + 60 / 2, 40 + 5 + 16, id(font_material_design_icons_400_32), color_on, TextAlign::CENTER, "\U000F050F");
+          it.printf(303 + 60 / 2, 40 + 5 + 32 + 2, id(font_roboto_400_16), color_on, TextAlign::TOP_CENTER, "--°C");
+        }
+
+        // Big icon @ (40,40)
+        it.printf(70, 70, id(font_material_design_icons_400_48), color_on, TextAlign::CENTER, "%s", "\U000F1239");
+
+        // Air quality text @ (181,70) 63x50
+        {
+          char wrap_buf[512];
+          snprintf(wrap_buf, sizeof(wrap_buf), "%s", id(sensor_alpstuga_1_air_quality_txt).state.c_str());
+          print_wrapped_text(213, 70, 63, 22, id(font_roboto_400_18), color_on, TextAlign::TOP_CENTER, wrap_buf);
+        }
+
+        // Small icon @ (197,40)
+        it.printf(212, 58, id(font_material_design_icons_400_22), color_on, TextAlign::CENTER, "%s", "\U000F0D43");
+      }
+
+# ----------------------------------------------------------------------------
+# Front button (GPIO2 per TRMNL firmware PIN_INTERRUPT)
+# ----------------------------------------------------------------------------
 binary_sensor:
   - platform: gpio
     id: trmnl_button
@@ -93,14 +312,9 @@ binary_sensor:
       - logger.log: "Button pressed - refreshing display"
       - component.update: epaper
 
-# On-board SHT4x temp/humidity (I2C: SDA=21, SCL=20 per TRMNL firmware).
-i2c:
-  id: sensor_bus
-  sda: GPIO21
-  scl: GPIO20
-  scan: true
-  frequency: 100kHz
-
+# ----------------------------------------------------------------------------
+# Sensors (on-board SHT4x + imported HA entities)
+# ----------------------------------------------------------------------------
 sensor:
   - platform: sht4x
     i2c_id: sensor_bus
@@ -111,17 +325,87 @@ sensor:
     humidity:
       name: "TRMNL Humidity"
 
-# Deep sleep — comment out for first flash; enable once display is verified.
-# Wake on button (GPIO2 LOW) or after sleep_duration.
-deep_sleep:
-  id: ds
-  run_duration: 60s
-  sleep_duration: 15min
-  wakeup_pin:
-    number: GPIO2
-    allow_other_uses: true
-    inverted: true
-    mode:
-      input: true
-      pullup: true
-  wakeup_pin_mode: INVERT_WAKEUP
+  - platform: homeassistant
+    id: sensor_alpstuga_1_temperature
+    entity_id: sensor.alpstuga_1_temperature
+    internal: true
+  - platform: homeassistant
+    id: sensor_alpstuga_1_humidity
+    entity_id: sensor.alpstuga_1_humidity
+    internal: true
+  - platform: homeassistant
+    id: sensor_alpstuga_1_air_quality
+    entity_id: sensor.alpstuga_1_air_quality
+    internal: true
+
+text_sensor:
+  - platform: homeassistant
+    id: sensor_alpstuga_1_air_quality_txt
+    entity_id: sensor.alpstuga_1_air_quality
+    internal: true
+
+# ----------------------------------------------------------------------------
+# Render loop. Waits for HA time to validate (which only happens after the API
+# connects), gives sensors a moment to populate, then renders the e-paper and
+# sleeps for page_refresh_current_s before re-running itself.
+# ----------------------------------------------------------------------------
+script:
+  - id: manage_run_and_sleep
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(ha_time).now().is_valid();'
+          then:
+            - logger.log: "Waiting for HA sync..."
+            - wait_until:
+                condition:
+                  lambda: 'return id(ha_time).now().is_valid();'
+                timeout: 120s
+      - if:
+          condition:
+            lambda: 'return id(initial_sensor_sync_pending);'
+          then:
+            - logger.log: "Waiting 5s for initial sensor updates..."
+            - delay: 5s
+            - lambda: 'id(initial_sensor_sync_pending) = false;'
+      - lambda: |-
+          int interval = id(page_refresh_default_s);
+          bool is_sleep_time = false;
+          auto t = id(ha_time).now();
+          if (t.is_valid()) {
+             int hour = t.hour;
+             int start = 0;
+             int end = 5;
+             if (start < end) {
+                 if (hour >= start && hour < end) is_sleep_time = true;
+             } else if (start > end) {
+                 if (hour >= start || hour < end) is_sleep_time = true;
+             }
+          }
+          if (is_sleep_time) {
+              interval = 3600;
+          }
+          id(page_refresh_current_s) = interval;
+      - component.update: epaper
+      - delay: !lambda 'return id(page_refresh_current_s) * 1000;'
+      - script.execute: manage_run_and_sleep
+
+# ----------------------------------------------------------------------------
+# Deep sleep is incompatible with the always-on script-based render loop above.
+# Leaving it commented for now. If you want battery operation, swap the script
+# for a one-shot render then `deep_sleep.enter` and bump sleep_duration to your
+# desired refresh cadence.
+# ----------------------------------------------------------------------------
+# deep_sleep:
+#   id: ds
+#   run_duration: 60s
+#   sleep_duration: 15min
+#   wakeup_pin:
+#     number: GPIO2
+#     allow_other_uses: true
+#     inverted: true
+#     mode:
+#       input: true
+#       pullup: true
+#   wakeup_pin_mode: INVERT_WAKEUP
