@@ -36,6 +36,10 @@ FIXES: list[tuple[re.Pattern[str], str]] = [
     # Always-on mode has no deep_sleep, so the button pin only has one user
     # and ESPHome rejects the flag. Strip the whole line.
     (re.compile(r"^[ \t]*allow_other_uses:\s*true\s*\n", re.M), ""),
+    # Promote 7.50inv2 -> 7.50inv2p so partial refresh kicks in. Requires a
+    # panel manufactured after Sep 2023 — comment this rule out if your
+    # panel is older and the screen stays blank after flashing.
+    (re.compile(r"(model:\s+)7\.50inv2(?!\w)"), r"\g<1>7.50inv2p"),
 ]
 
 
