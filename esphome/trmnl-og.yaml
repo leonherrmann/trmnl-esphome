@@ -84,6 +84,7 @@ binary_sensor:
     name: "TRMNL Button"
     pin:
       number: GPIO2
+      allow_other_uses: true
       mode:
         input: true
         pullup: true
@@ -118,6 +119,7 @@ deep_sleep:
   sleep_duration: 15min
   wakeup_pin:
     number: GPIO2
+    allow_other_uses: true
     inverted: true
     mode:
       input: true
