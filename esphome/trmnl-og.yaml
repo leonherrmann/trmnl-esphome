@@ -1,0 +1,122 @@
+substitutions:
+  device_name: trmnl-og
+  friendly_name: TRMNL OG
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  on_boot:
+    priority: -100
+    then:
+      - logger.log: "Boot complete; refreshing display."
+      - component.update: epaper
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: arduino
+
+logger:
+  level: DEBUG
+
+api:
+  encryption:
+    key: "REPLACE_WITH_32_BYTE_BASE64_KEY"
+
+ota:
+  - platform: esphome
+    password: "REPLACE_WITH_OTA_PASSWORD"
+
+wifi:
+  ssid: "REDACTED_SSID"
+  password: "REDACTED_PASSWORD"
+  ap:
+    ssid: "${device_name}-fallback"
+    password: "trmnlsetup"
+
+captive_portal:
+
+# Display SPI bus
+# Pins per TRMNL firmware src/DEV_Config.h (BOARD_TRMNL): SCK=7, MOSI=8.
+spi:
+  id: epaper_spi
+  clk_pin: GPIO7
+  mosi_pin: GPIO8
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_md
+    size: 24
+  - file: "gfonts://Roboto"
+    id: font_lg
+    size: 56
+
+# Waveshare 7.5" V2 (800x480 B/W).
+# Pins per TRMNL firmware: CS=6, DC=5, BUSY=4, RST=10.
+display:
+  - platform: waveshare_epaper
+    id: epaper
+    spi_id: epaper_spi
+    model: 7.50inv2
+    cs_pin: GPIO6
+    dc_pin: GPIO5
+    busy_pin: GPIO4
+    reset_pin: GPIO10
+    rotation: 0
+    update_interval: never
+    lambda: |-
+      it.fill(COLOR_OFF);
+      it.rectangle(0, 0, it.get_width(), it.get_height(), COLOR_ON);
+      it.rectangle(20, 20, it.get_width() - 40, it.get_height() - 40, COLOR_ON);
+      it.filled_circle(it.get_width() / 2, it.get_height() / 2, 80, COLOR_ON);
+      it.printf(40, 40, id(font_lg), COLOR_ON, "TRMNL OG");
+      it.printf(40, 110, id(font_md), COLOR_ON,
+                "ESPHome %s  -  %ix%i",
+                ESPHOME_VERSION, it.get_width(), it.get_height());
+
+# Front button on GPIO2 (active LOW, RTC-capable so it can wake from deep sleep).
+binary_sensor:
+  - platform: gpio
+    id: trmnl_button
+    name: "TRMNL Button"
+    pin:
+      number: GPIO2
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+    on_press:
+      - logger.log: "Button pressed - refreshing display"
+      - component.update: epaper
+
+# On-board SHT4x temp/humidity (I2C: SDA=21, SCL=20 per TRMNL firmware).
+i2c:
+  id: sensor_bus
+  sda: GPIO21
+  scl: GPIO20
+  scan: true
+  frequency: 100kHz
+
+sensor:
+  - platform: sht4x
+    i2c_id: sensor_bus
+    address: 0x44
+    update_interval: 60s
+    temperature:
+      name: "TRMNL Temperature"
+    humidity:
+      name: "TRMNL Humidity"
+
+# Deep sleep — comment out for first flash; enable once display is verified.
+# Wake on button (GPIO2 LOW) or after sleep_duration.
+deep_sleep:
+  id: ds
+  run_duration: 60s
+  sleep_duration: 15min
+  wakeup_pin:
+    number: GPIO2
+    inverted: true
+    mode:
+      input: true
+      pullup: true
+  wakeup_pin_mode: INVERT_WAKEUP
