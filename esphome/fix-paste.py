@@ -41,13 +41,17 @@ FIXES: list[tuple[re.Pattern[str], str]] = [
     # the partial-refresh waveform. Leaving the rule disabled by default;
     # uncomment if you ever confirm a newer panel.
     # (re.compile(r"(model:\s+)7\.50inv2(?!\w)"), r"\g<1>7.50inv2p"),
-    # Designer page-level "Dark Mode" generates inverted color constants
-    # even when the device-level metadata says Dark Mode: disabled. Swap
-    # them back to the conventional B-on-W mapping.
-    (re.compile(r"const auto COLOR_WHITE = Color\(0,\s*0,\s*0\)[^\n]*"),
-     "const auto COLOR_WHITE = Color(255, 255, 255);"),
-    (re.compile(r"const auto COLOR_BLACK = Color\(255,\s*255,\s*255\)[^\n]*"),
-     "const auto COLOR_BLACK = Color(0, 0, 0);"),
+    # The Waveshare 7.5"v2 panel in the retail TRMNL OG has inverted color
+    # polarity vs. what ESPHome's 7.50inv2 driver assumes — feeding the
+    # framebuffer conventional constants produces a black background with
+    # white widgets. Force the lambda's COLOR_WHITE / COLOR_BLACK constants
+    # to the inverse so the rendered output looks normal on the panel.
+    # Idempotent: re-running the helper doesn't double-invert. If you ever
+    # switch to a conventional panel, comment these two rules out.
+    (re.compile(r"const auto COLOR_WHITE\s*=\s*Color\([^)]+\)[^\n]*"),
+     "const auto COLOR_WHITE = Color(0, 0, 0); // inverted polarity for TRMNL OG panel"),
+    (re.compile(r"const auto COLOR_BLACK\s*=\s*Color\([^)]+\)[^\n]*"),
+     "const auto COLOR_BLACK = Color(255, 255, 255); // inverted polarity for TRMNL OG panel"),
     # Designer emits printf format strings with literal `%` at the end
     # ("%.0f%", "--%"), which is undefined behaviour. Escape it.
     (re.compile(r'(?<!%)%(?=")'), "%%"),
