@@ -87,7 +87,7 @@ display:
     id: epaper_display
     spi_id: epaper_spi
     model: 7.50inv2p          # partial-refresh variant; needs panel built after Sep 2023
-    full_update_every: 30     # 1 full refresh per 30 partials; lower = less ghosting, more flash
+    full_update_every: 1      # TEMP DIAGNOSTIC: force every refresh to be full (with flash)
     cs_pin: GPIO6
     dc_pin: GPIO5
     busy_pin: GPIO4
