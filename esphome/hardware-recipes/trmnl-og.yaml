@@ -37,8 +37,7 @@ display:
   - platform: waveshare_epaper
     id: epaper_display
     spi_id: epaper_spi
-    model: 7.50inv2p           # partial-refresh model (panel must be post-Sep-2023)
-    full_update_every: 30
+    model: 7.50inv2     # 7.50inv2p tested but the TRMNL OG ships an older panel
     cs_pin: GPIO6     # EPD CS
     dc_pin: GPIO5     # EPD DC
     busy_pin: GPIO4   # EPD BUSY

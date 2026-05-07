@@ -36,10 +36,21 @@ FIXES: list[tuple[re.Pattern[str], str]] = [
     # Always-on mode has no deep_sleep, so the button pin only has one user
     # and ESPHome rejects the flag. Strip the whole line.
     (re.compile(r"^[ \t]*allow_other_uses:\s*true\s*\n", re.M), ""),
-    # Promote 7.50inv2 -> 7.50inv2p so partial refresh kicks in. Requires a
-    # panel manufactured after Sep 2023 — comment this rule out if your
-    # panel is older and the screen stays blank after flashing.
-    (re.compile(r"(model:\s+)7\.50inv2(?!\w)"), r"\g<1>7.50inv2p"),
+    # Partial refresh (7.50inv2p) requires a panel built after Sep 2023.
+    # Tested on a current retail TRMNL OG and the panel silently ignored
+    # the partial-refresh waveform. Leaving the rule disabled by default;
+    # uncomment if you ever confirm a newer panel.
+    # (re.compile(r"(model:\s+)7\.50inv2(?!\w)"), r"\g<1>7.50inv2p"),
+    # Designer page-level "Dark Mode" generates inverted color constants
+    # even when the device-level metadata says Dark Mode: disabled. Swap
+    # them back to the conventional B-on-W mapping.
+    (re.compile(r"const auto COLOR_WHITE = Color\(0,\s*0,\s*0\)[^\n]*"),
+     "const auto COLOR_WHITE = Color(255, 255, 255);"),
+    (re.compile(r"const auto COLOR_BLACK = Color\(255,\s*255,\s*255\)[^\n]*"),
+     "const auto COLOR_BLACK = Color(0, 0, 0);"),
+    # Designer emits printf format strings with literal `%` at the end
+    # ("%.0f%", "--%"), which is undefined behaviour. Escape it.
+    (re.compile(r'(?<!%)%(?=")'), "%%"),
 ]
 
 
